@@ -4,23 +4,37 @@
 Replaces marker comments with generated content.
 """
 
+import glob
 import os
 
 SCRIPT_DIR = os.path.dirname(__file__)
 REPO_ROOT = os.path.join(SCRIPT_DIR, "..")
-TEMPLATE = os.path.join(REPO_ROOT, "assets", "README.md")
+ASSETS_DIR = os.path.join(REPO_ROOT, "assets")
+TEMPLATE = os.path.join(ASSETS_DIR, "README.md")
 OUTPUT = os.path.join(REPO_ROOT, "README.md")
 
-REPLACEMENTS = {
-    "<!-- EXAMPLE -->": "example",
-}
+
+def find_header(variant):
+    """Find the current header-<variant>-<seed>.svg in assets/."""
+    pattern = os.path.join(ASSETS_DIR, f"header-{variant}-*.svg")
+    matches = glob.glob(pattern)
+    if not matches:
+        raise FileNotFoundError(f"No header found for {variant!r}: {pattern}")
+    # Most recent if somehow multiple exist
+    path = max(matches, key=os.path.getmtime)
+    return f"assets/{os.path.basename(path)}"
 
 
 def main():
+    replacements = {
+        "<!-- HEADER_DARK -->": find_header("dark"),
+        "<!-- HEADER_LIGHT -->": find_header("light"),
+    }
+
     with open(TEMPLATE, "r", encoding="utf-8") as f:
         content = f.read()
 
-    for marker, replacement in REPLACEMENTS.items():
+    for marker, replacement in replacements.items():
         content = content.replace(marker, replacement)
 
     with open(OUTPUT, "w", encoding="utf-8") as f:
