@@ -1,9 +1,9 @@
-name: Daily Profile Update
+name: 🗓️ profile update
 
 on:
   schedule:
-    - cron: '0 6,18 * * *'  # Every 12h — 6 AM & 6 PM UTC
-  workflow_dispatch:       # Allow manual trigger
+    - cron: '0 6,18 * * *'
+  workflow_dispatch:
 
 jobs:
   update:
@@ -12,23 +12,25 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: 📂 checkout 
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: 🐍 setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
+      - name: 📦 install dependencies
         run: pip install -r requirements.txt
 
-      - name: Generate header SVG
+      - name: 🎨 generate header image
         run: python scripts/generate_header.py
 
-      - name: Build README
+      - name: ✍️ update profile
         run: python scripts/update_readme.py
 
-      - name: Commit changes
+      - name: 💾 commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 'chore: daily profile update'
-          file_pattern: 'assets/*.svg README.md'
+          file_pattern: 'assets/* README.md'
