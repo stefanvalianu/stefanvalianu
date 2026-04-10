@@ -2,7 +2,7 @@ name: Daily Profile Update
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # Daily at 6 AM UTC
+    - cron: '0 6,18 * * *'  # Every 12h — 6 AM & 6 PM UTC
   workflow_dispatch:       # Allow manual trigger
 
 jobs:
@@ -24,10 +24,8 @@ jobs:
       - name: Generate header SVG
         run: python scripts/generate_header.py
 
-      - name: Update Bluesky feed
+      - name: Build README
         run: python scripts/update_readme.py
-        env:
-          BLUESKY_HANDLE: ${{ vars.BLUESKY_HANDLE }}
 
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v5
