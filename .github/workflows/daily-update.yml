@@ -1,0 +1,36 @@
+name: 🗓️ profile update
+
+on:
+  schedule:
+    - cron: '0 6,18 * * *'
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: 📂 checkout 
+        uses: actions/checkout@v4
+
+      - name: 🐍 setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 📦 install dependencies
+        run: pip install -r requirements.txt
+
+      - name: 🎨 generate header image
+        run: python scripts/generate_header.py
+
+      - name: ✍️ update profile
+        run: python scripts/update_readme.py
+
+      - name: 💾 commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore: daily profile update'
+          file_pattern: 'assets/* README.md'
