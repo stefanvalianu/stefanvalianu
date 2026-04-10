@@ -1,0 +1,36 @@
+name: Daily Profile Update
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6 AM UTC
+  workflow_dispatch:       # Allow manual trigger
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install Pillow
+
+      - name: Generate header SVG
+        run: python scripts/generate_header.py
+
+      - name: Update Bluesky feed
+        run: python scripts/update_readme.py
+        env:
+          BLUESKY_HANDLE: ${{ vars.BLUESKY_HANDLE }}
+
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore: daily profile update'
+          file_pattern: 'assets/*.svg README.md'
