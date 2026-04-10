@@ -5,21 +5,22 @@ Fetches a seeded photo from Picsum and converts it to colored ASCII art
 with a limited 216-color palette (6 levels per channel).  Produces both
 light- and dark-themed variants for GitHub's prefers-color-scheme switching.
 
-An optional label is rendered as bitmap-font ASCII art on a gradient
-backdrop, placed in the emptiest region of the image.
+An optional titlecard (assets/TITLECARD.md) is rendered on a translucent
+backdrop at the bottom center of the image, preserving basic markdown
+formatting (bold, italic, headers).
 
 Dependencies: Pillow (pip install Pillow)
 
 Usage:
-    python generate_header.py [seed] [label]
+    python generate_header.py [seed]
 
     seed    String seed for generation (default: random)
-    label   Text to overlay on the image (default: Stefan Valianu)
 """
 
 import colorsys
 import os
 import random
+import re
 import sys
 import urllib.request
 from io import BytesIO
@@ -88,99 +89,49 @@ def _dark_variant(hex_color):
     return result
 
 
-# ── Bitmap font (5 rows tall, variable width) ──────────────────────────
+# ── Titlecard (Markdown) ──────────────────────────────────────────────
 
-GLYPH = {
-    'A': (" ## ", "#  #", "####", "#  #", "#  #"),
-    'B': ("### ", "#  #", "### ", "#  #", "### "),
-    'C': (" ## ", "#   ", "#   ", "#   ", " ## "),
-    'D': ("### ", "#  #", "#  #", "#  #", "### "),
-    'E': ("####", "#   ", "### ", "#   ", "####"),
-    'F': ("####", "#   ", "### ", "#   ", "#   "),
-    'G': (" ## ", "#   ", "# ##", "#  #", " ## "),
-    'H': ("#  #", "#  #", "####", "#  #", "#  #"),
-    'I': ("###", " # ", " # ", " # ", "###"),
-    'J': (" ###", "   #", "   #", "#  #", " ## "),
-    'K': ("#  #", "# # ", "##  ", "# # ", "#  #"),
-    'L': ("#   ", "#   ", "#   ", "#   ", "####"),
-    'M': ("#   #", "## ##", "# # #", "#   #", "#   #"),
-    'N': ("#  #", "## #", "# ##", "#  #", "#  #"),
-    'O': (" ## ", "#  #", "#  #", "#  #", " ## "),
-    'P': ("### ", "#  #", "### ", "#   ", "#   "),
-    'Q': (" ## ", "#  #", "#  #", " ## ", "  # "),
-    'R': ("### ", "#  #", "### ", "# # ", "#  #"),
-    'S': (" ###", "#   ", " ## ", "   #", "### "),
-    'T': ("#####", "  #  ", "  #  ", "  #  ", "  #  "),
-    'U': ("#  #", "#  #", "#  #", "#  #", " ## "),
-    'V': ("#   #", "#   #", " # # ", " # # ", "  #  "),
-    'W': ("#   #", "#   #", "# # #", "# # #", " # # "),
-    'X': ("#   #", " # # ", "  #  ", " # # ", "#   #"),
-    'Y': ("#   #", " # # ", "  #  ", "  #  ", "  #  "),
-    'Z': ("#####", "   # ", "  #  ", " #   ", "#####"),
-    '0': (" ## ", "#  #", "#  #", "#  #", " ## "),
-    '1': (" #  ", "##  ", " #  ", " #  ", "####"),
-    '2': (" ## ", "#  #", "  # ", " #  ", "####"),
-    '3': ("### ", "   #", " ## ", "   #", "### "),
-    '4': ("#  #", "#  #", "####", "   #", "   #"),
-    '5': ("####", "#   ", "### ", "   #", "### "),
-    '6': (" ## ", "#   ", "### ", "#  #", " ## "),
-    '7': ("####", "   #", "  # ", " #  ", "#   "),
-    '8': (" ## ", "#  #", " ## ", "#  #", " ## "),
-    '9': (" ## ", "#  #", " ###", "   #", " ## "),
-    ' ': ("   ", "   ", "   ", "   ", "   "),
-    '.': (" ", " ", " ", " ", "#"),
-    '-': ("    ", "    ", "####", "    ", "    "),
-    '_': ("    ", "    ", "    ", "    ", "####"),
-}
-GLYPH_H = 5
+_INLINE_RE = re.compile(
+    r"\*\*\*(.+?)\*\*\*"  # ***bold italic***
+    r"|\*\*(.+?)\*\*"     # **bold**
+    r"|\*(.+?)\*"          # *italic*
+    r"|([^*]+)"            # plain text
+)
 
 
-def render_text(text):
-    """Render text as a 5-row ASCII art block using the bitmap font.
+def parse_md_line(line):
+    """Parse a markdown line into (text, bold, italic) segments."""
+    bold_all = False
+    m = re.match(r"^(#{1,6})\s+", line)
+    if m:
+        line = line[m.end():]
+        bold_all = True
 
-    Returns a list of 5 equal-length strings.
-    """
-    text = text.upper()
-    rows = [""] * GLYPH_H
-    for i, ch in enumerate(text):
-        glyph = GLYPH.get(ch, GLYPH[' '])
-        if i > 0:
-            for r in range(GLYPH_H):
-                rows[r] += " "
-        for r in range(GLYPH_H):
-            rows[r] += glyph[r]
-    return rows
+    segments = []
+    for m in _INLINE_RE.finditer(line):
+        if m.group(1):      # ***bold italic***
+            segments.append((m.group(1), True, True))
+        elif m.group(2):    # **bold**
+            segments.append((m.group(2), True, False))
+        elif m.group(3):    # *italic*
+            segments.append((m.group(3), bold_all, True))
+        elif m.group(4):    # plain
+            segments.append((m.group(4), bold_all, False))
+
+    return segments
 
 
-def find_placement(grid, tw, th, margin=3):
-    """Find the grid position with the most empty space for a text block.
-
-    Scans every valid position and picks the one whose bounding box
-    (including margin) contains the most space characters.  Falls back
-    to center-bottom if no position is at least 50 % empty.
-    """
-    pw = tw + margin * 2
-    ph = th + margin * 2
-    best_x, best_y, best_score = 0, 0, -1
-
-    for y in range(max(1, ROWS - ph + 1)):
-        for x in range(max(1, COLS - pw + 1)):
-            score = sum(
-                1
-                for dy in range(ph)
-                for dx in range(pw)
-                if grid[y + dy][x + dx][0] == " "
-            )
-            if score > best_score:
-                best_score = score
-                best_x = x + margin
-                best_y = y + margin
-
-    if best_score < pw * ph * 0.5:
-        best_x = max(0, (COLS - tw) // 2)
-        best_y = max(0, ROWS - th - margin)
-
-    return best_x, best_y
+def load_titlecard():
+    """Load assets/TITLECARD.md and return its lines, or None."""
+    path = os.path.join(os.path.dirname(__file__), "..", "assets", "TITLECARD.md")
+    if not os.path.exists(path):
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    # Strip trailing blank lines
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return lines if lines else None
 
 
 # ── Image fetch ─────────────────────────────────────────────────────────
@@ -267,7 +218,7 @@ def _xml(s):
     )
 
 
-def to_svg(grid, theme, text_rows=None, text_pos=None):
+def to_svg(grid, theme, titlecard=None):
     """Render the character grid as an SVG document."""
     bg = theme["bg"]
     border = theme["border"]
@@ -278,36 +229,12 @@ def to_svg(grid, theme, text_rows=None, text_pos=None):
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'width="{SVG_W}" height="{SVG_H}" '
         f'viewBox="0 0 {SVG_W} {SVG_H}">',
-    ]
-
-    # Gradient definition for text backdrop
-    if text_rows and text_pos:
-        lines.append("  <defs>")
-        lines.append(
-            '    <linearGradient id="tbg" x1="0" y1="0" x2="0" y2="1">'
-        )
-        lines.append(
-            f'      <stop offset="0%" stop-color="{bg}" stop-opacity="0"/>'
-        )
-        lines.append(
-            f'      <stop offset="20%" stop-color="{bg}" stop-opacity="0.9"/>'
-        )
-        lines.append(
-            f'      <stop offset="80%" stop-color="{bg}" stop-opacity="0.9"/>'
-        )
-        lines.append(
-            f'      <stop offset="100%" stop-color="{bg}" stop-opacity="0"/>'
-        )
-        lines.append("    </linearGradient>")
-        lines.append("  </defs>")
-
-    lines.extend([
         f'  <rect width="100%" height="100%" fill="{bg}" rx="6"/>',
         f'  <rect x=".5" y=".5" width="{SVG_W - 1}" height="{SVG_H - 1}" '
         f'fill="none" stroke="{border}" stroke-width="1" rx="6"/>',
         f"  <g font-family=\"'SFMono-Regular',Consolas,'Liberation Mono',"
         f'Menlo,monospace" font-size="{FONT_SIZE}">',
-    ])
+    ]
 
     # ── Base grid ──
     for r, row in enumerate(grid):
@@ -341,31 +268,54 @@ def to_svg(grid, theme, text_rows=None, text_pos=None):
             f'xml:space="preserve">{parts}</text>'
         )
 
-    # ── Text overlay with gradient backdrop ──
-    if text_rows and text_pos:
-        tx, ty = text_pos
-        tw = len(text_rows[0])
-        margin = 3
+    # ── Titlecard overlay ──
+    if titlecard:
+        pad_px = 3 * CHAR_W  # uniform padding on all sides (~23px)
+        parsed = [parse_md_line(line) for line in titlecard]
+        widths = [sum(len(t) for t, _, _ in segs) for segs in parsed]
+        max_w = max(widths) if widths else 0
+        num_lines = len(titlecard)
 
-        # Gradient backdrop rect
-        gx = PAD + max(0, tx - margin) * CHAR_W
-        gy = PAD + max(0, ty - margin) * LINE_H
-        gw = (tw + margin * 2) * CHAR_W
-        gh = (GLYPH_H + margin * 2) * LINE_H
+        card_pw = max_w * CHAR_W + pad_px * 2
+        card_ph = num_lines * LINE_H + pad_px * 2
+
+        # Bottom center
+        card_x = (SVG_W - card_pw) / 2
+        card_y = SVG_H - PAD - card_ph
+
+        # Translucent backdrop with border
         lines.append(
-            f'    <rect x="{gx:.1f}" y="{gy:.1f}" '
-            f'width="{gw:.1f}" height="{gh:.1f}" '
-            f'fill="url(#tbg)" rx="6"/>'
+            f'    <rect x="{card_x:.1f}" y="{card_y:.1f}" '
+            f'width="{card_pw:.1f}" height="{card_ph:.1f}" '
+            f'fill="{bg}" fill-opacity="0.85" rx="6"/>'
+        )
+        lines.append(
+            f'    <rect x="{card_x:.1f}" y="{card_y:.1f}" '
+            f'width="{card_pw:.1f}" height="{card_ph:.1f}" '
+            f'fill="none" stroke="{border}" stroke-opacity="0.5" '
+            f'stroke-width="1" rx="6"/>'
         )
 
-        # Overlay text characters
-        for r, row_str in enumerate(text_rows):
-            y = PAD + (ty + r + 1) * LINE_H
-            x = PAD + tx * CHAR_W
+        # Render each line
+        text_x = card_x + pad_px
+        for i, segs in enumerate(parsed):
+            text_y = card_y + pad_px + i * LINE_H + LINE_H
+
+            if not segs:
+                continue  # blank line — vertical spacing preserved via index
+
+            tspans = []
+            for text, bold, italic in segs:
+                attrs = f'fill="{text_color}"'
+                if bold:
+                    attrs += ' font-weight="bold"'
+                if italic:
+                    attrs += ' font-style="italic"'
+                tspans.append(f"<tspan {attrs}>{_xml(text)}</tspan>")
+
             lines.append(
-                f'    <text x="{x:.1f}" y="{y:.0f}" '
-                f'fill="{text_color}" xml:space="preserve">'
-                f"{_xml(row_str)}</text>"
+                f'    <text x="{text_x:.1f}" y="{text_y:.1f}" '
+                f'xml:space="preserve">{"".join(tspans)}</text>'
             )
 
     lines.append("  </g>")
@@ -378,21 +328,15 @@ def to_svg(grid, theme, text_rows=None, text_pos=None):
 
 def main():
     seed_str = sys.argv[1] if len(sys.argv) > 1 else str(random.randint(1, 1_000_000_000))
-    label = sys.argv[2] if len(sys.argv) > 2 else "Stefan Valianu"
     out_dir = os.path.join(os.path.dirname(__file__), "..", "assets")
     os.makedirs(out_dir, exist_ok=True)
 
     img = fetch_image(seed_str)
     grid = image_to_grid(img)
-
-    text_rows = render_text(label) if label else None
-    text_pos = None
-    if text_rows:
-        tw = len(text_rows[0])
-        text_pos = find_placement(grid, tw, GLYPH_H)
+    titlecard = load_titlecard()
 
     for name, theme in THEMES.items():
-        svg = to_svg(grid, theme, text_rows, text_pos)
+        svg = to_svg(grid, theme, titlecard)
         path = os.path.join(out_dir, f"header-{name}.svg")
         with open(path, "w", encoding="utf-8") as f:
             f.write(svg)
