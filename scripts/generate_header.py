@@ -18,6 +18,7 @@ Usage:
 """
 
 import colorsys
+import glob
 import os
 import random
 import re
@@ -331,13 +332,17 @@ def main():
     out_dir = os.path.join(os.path.dirname(__file__), "..", "assets")
     os.makedirs(out_dir, exist_ok=True)
 
+    # Remove old generated headers
+    for old in glob.glob(os.path.join(out_dir, "header-*-*.svg")):
+        os.remove(old)
+
     img = fetch_image(seed_str)
     grid = image_to_grid(img)
     titlecard = load_titlecard()
 
     for name, theme in THEMES.items():
         svg = to_svg(grid, theme, titlecard)
-        path = os.path.join(out_dir, f"header-{name}.svg")
+        path = os.path.join(out_dir, f"header-{name}-{seed_str}.svg")
         with open(path, "w", encoding="utf-8") as f:
             f.write(svg)
         print(f"Generated {path} (seed: {seed_str})")
