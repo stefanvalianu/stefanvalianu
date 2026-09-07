@@ -1,8 +1,8 @@
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/header-dark-556969332.svg">
-    <source media="(prefers-color-scheme: light)" srcset="assets/header-light-556969332.svg">
-    <img src="assets/header-dark-556969332.svg" alt="ASCII art header" width="800">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/header-dark-224243577.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/header-light-224243577.svg">
+    <img src="assets/header-dark-224243577.svg" alt="ASCII art header" width="800">
   </picture>
 </div>
 
